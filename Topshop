@@ -1,0 +1,45 @@
+package cannonball.seeder
+import cannonball.models.fetcher.FetcherMessage.URLRequest
+import cannonball.seeder.Utils._
+import com.typesafe.config.Config
+import org.json4s._
+import org.json4s.jackson.JsonMethods._
+import org.jsoup.nodes.Document
+
+class Topshop extends CustomSeeder {
+
+  val topCategories = List(
+    "http://us.topshop.com/en/tsus/category/clothing-70483/N-azcZdgm",
+    "http://us.topshop.com/en/tsus/category/shoes-70484/N-b9gZdgm",
+    "http://us.topshop.com/en/tsus/category/bags-accessories-1702229/N-avtZdgm",
+    "http://us.topshop.com/en/tsus/category/make-up-70486/N-ay6Zdgm"
+  )
+
+  val jsonUrl = "http://us.topshop.com/webapp/wcs/stores/servlet/CatalogNavigationAjaxSearchResultCmd?storeId=13052&catalogId=33060&langId=-1&dimSelected="
+
+  def generate(config: Config, request: URLRequest, content: Array[Byte]) = request.currentDepth match {
+    case 0 => ListingLinks(topCategories, forwardLinks = true)
+    case 1 => ListingLinks(getJsonListingLinks(content, request.url), forwardLinks = true)
+    case 2 => ListingLinks(getProductLinks(new String(content), request.url), forwardLinks = false)
+  }
+
+  def getJsonListingLinks(htmlPage: Document, url: String) = {
+
+    val relativeUrlPattern = """http://us.topshop.com(.*)""".r
+    val relativeUrlPattern(relativeUrl) = url
+    val noOfPages = Math.ceil(extract(htmlPage.select("div.control_block.total_count").text().trim()) / 20).toInt
+    val listingUrl = jsonUrl + relativeUrl + "?No=%d&Nrpp=20"
+    (0 to noOfPages).map { index =>
+      listingUrl.format(index * 20)
+    }.toList
+  }
+
+  def getProductLinks(mainJson: String, url: String) = {
+    val jsonData: JValue = parse(mainJson)
+    val productArray = (jsonData \ "results" \ "contents")(0) \ "records"
+    val jsonData1 = compact(render(productArray(0) \\ "productUrl"))
+    val allproducts = productArray.children.map(temp => s"http://us.topshop.com" + (temp \ "productUrl").values)
+    allproducts
+  }
+}
+
